@@ -14,7 +14,173 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      costing_configs: {
+        Row: {
+          category: string
+          coir_type: string
+          costing_type: string
+          created_at: string
+          custom_dimensions: boolean
+          fabric_type: string
+          foam_density: number
+          foam_type: string
+          glue_type: string
+          id: string
+          length_in: number
+          mattress_type: string
+          size: string
+          spring_density: number
+          spring_type: string
+          type: string
+          user_id: string
+          width_in: number
+        }
+        Insert: {
+          category?: string
+          coir_type?: string
+          costing_type?: string
+          created_at?: string
+          custom_dimensions?: boolean
+          fabric_type?: string
+          foam_density?: number
+          foam_type?: string
+          glue_type?: string
+          id?: string
+          length_in?: number
+          mattress_type?: string
+          size?: string
+          spring_density?: number
+          spring_type?: string
+          type?: string
+          user_id: string
+          width_in?: number
+        }
+        Update: {
+          category?: string
+          coir_type?: string
+          costing_type?: string
+          created_at?: string
+          custom_dimensions?: boolean
+          fabric_type?: string
+          foam_density?: number
+          foam_type?: string
+          glue_type?: string
+          id?: string
+          length_in?: number
+          mattress_type?: string
+          size?: string
+          spring_density?: number
+          spring_type?: string
+          type?: string
+          user_id?: string
+          width_in?: number
+        }
+        Relationships: []
+      }
+      costing_results: {
+        Row: {
+          config_id: string
+          cost_items: Json
+          created_at: string
+          id: string
+          labour_overhead: number
+          profit: number
+          profit_percent: number
+          selling_price: number
+          total_cost: number
+          total_material_cost: number
+          user_id: string
+        }
+        Insert: {
+          config_id: string
+          cost_items?: Json
+          created_at?: string
+          id?: string
+          labour_overhead?: number
+          profit?: number
+          profit_percent?: number
+          selling_price?: number
+          total_cost?: number
+          total_material_cost?: number
+          user_id: string
+        }
+        Update: {
+          config_id?: string
+          cost_items?: Json
+          created_at?: string
+          id?: string
+          labour_overhead?: number
+          profit?: number
+          profit_percent?: number
+          selling_price?: number
+          total_cost?: number
+          total_material_cost?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "costing_results_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "costing_configs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      materials: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          last_updated: string
+          material: string
+          rate: number
+          unit: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          id?: string
+          last_updated?: string
+          material: string
+          rate?: number
+          unit: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          last_updated?: string
+          material?: string
+          rate?: number
+          unit?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
