@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,9 +6,13 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import PageHeader from "@/components/PageHeader";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
 const Configuration = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [mattressType, setMattressType] = useState("Single");
   const [costingType, setCostingType] = useState("Standard");
   const [type, setType] = useState("Standard");
@@ -17,7 +21,6 @@ const Configuration = () => {
   const [customDimensions, setCustomDimensions] = useState(true);
   const [length, setLength] = useState("78");
   const [width, setWidth] = useState("60");
-
   const [foamType, setFoamType] = useState("HR Foam");
   const [foamDensity, setFoamDensity] = useState("40");
   const [springType, setSpringType] = useState("Pocketed");
@@ -26,7 +29,93 @@ const Configuration = () => {
   const [fabricType, setFabricType] = useState("Jacquard Fabric");
   const [glueType, setGlueType] = useState("Synthetic Glue");
 
-  const handleCalculate = () => {
+  const [materialRates, setMaterialRates] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const fetchRates = async () => {
+      const { data } = await supabase.from("materials").select("material, rate");
+      if (data) {
+        const rates: Record<string, number> = {};
+        data.forEach((m) => (rates[m.material] = m.rate));
+        setMaterialRates(rates);
+      }
+    };
+    fetchRates();
+  }, []);
+
+  const handleCalculate = async () => {
+    if (!user) return;
+
+    const { data: config, error: configErr } = await supabase
+      .from("costing_configs")
+      .insert({
+        user_id: user.id,
+        mattress_type: mattressType,
+        costing_type: costingType,
+        type,
+        category,
+        size,
+        custom_dimensions: customDimensions,
+        length_in: Number(length),
+        width_in: Number(width),
+        foam_type: foamType,
+        foam_density: Number(foamDensity),
+        spring_type: springType,
+        spring_density: Number(springDensity),
+        coir_type: coirType,
+        fabric_type: fabricType,
+        glue_type: glueType,
+      })
+      .select()
+      .single();
+
+    if (configErr || !config) {
+      toast.error("Failed to save configuration");
+      return;
+    }
+
+    // Calculate costs using material rates
+    const springRate = materialRates[springType] || 22;
+    const steelRate = materialRates["Steel Wire"] || 85;
+    const foamRate = materialRates[foamType] || 260;
+    const coirRate = materialRates[coirType] || 180;
+    const glueRate = materialRates[glueType] || 120;
+    const fabricRate = materialRates[fabricType] || 160;
+
+    const costItems = [
+      { category: "Core", material: `${springType} Springs`, qty: 320, unit: "units", cost: 320 * springRate },
+      { category: "Core", material: "Steel", qty: 14, unit: "kg", cost: Math.round(14 * steelRate) },
+      { category: "Comfort", material: foamType, qty: 18, unit: "kg", cost: Math.round(18 * foamRate) },
+      { category: "Comfort", material: coirType, qty: 0, unit: "kg", cost: Math.round(10 * coirRate) },
+      { category: "Support", material: "Glue", qty: 3.5, unit: "L", cost: Math.round(3.5 * glueRate) },
+      { category: "Cover", material: fabricType, qty: 7, unit: "m", cost: Math.round(7 * fabricRate) },
+      { category: "Labour", material: "—", qty: 0, unit: "—", cost: 700 },
+      { category: "Overhead", material: "—", qty: 0, unit: "—", cost: 450 },
+    ];
+
+    const totalMaterialCost = costItems.reduce((s, i) => s + i.cost, 0);
+    const labourOverhead = 700 + 450;
+    const totalCost = totalMaterialCost;
+    const profit = Math.round(totalCost * 0.2);
+    const sellingPrice = totalCost + profit;
+
+    const { error: resultErr } = await supabase.from("costing_results").insert({
+      user_id: user.id,
+      config_id: config.id,
+      cost_items: costItems,
+      total_material_cost: totalMaterialCost,
+      labour_overhead: labourOverhead,
+      total_cost: totalCost,
+      profit_percent: 20,
+      profit,
+      selling_price: sellingPrice,
+    });
+
+    if (resultErr) {
+      toast.error("Failed to save results");
+      return;
+    }
+
     navigate("/results");
   };
 
@@ -43,7 +132,6 @@ const Configuration = () => {
               <div className="section-header">PEPS Mattress Costing System</div>
               <div className="space-y-4 p-6">
                 <h3 className="font-semibold text-primary">Mattress Configuration</h3>
-
                 <div>
                   <Label>Mattress Type</Label>
                   <Select value={mattressType} onValueChange={setMattressType}>
@@ -56,7 +144,6 @@ const Configuration = () => {
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Costing Type</Label>
@@ -79,7 +166,6 @@ const Configuration = () => {
                     </Select>
                   </div>
                 </div>
-
                 <div>
                   <Label>Mattress Category</Label>
                   <Select value={category} onValueChange={setCategory}>
@@ -91,7 +177,6 @@ const Configuration = () => {
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div>
                   <Label>Size</Label>
                   <Select value={size} onValueChange={setSize}>
@@ -103,12 +188,10 @@ const Configuration = () => {
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div className="flex items-center gap-2">
                   <Checkbox id="custom" checked={customDimensions} onCheckedChange={(c) => setCustomDimensions(!!c)} />
                   <Label htmlFor="custom">Enable Custom Dimensions</Label>
                 </div>
-
                 {customDimensions && (
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -121,9 +204,7 @@ const Configuration = () => {
                     </div>
                   </div>
                 )}
-
                 <hr className="border-border" />
-
                 <h3 className="font-semibold text-primary">Spring Details</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -153,7 +234,7 @@ const Configuration = () => {
                 </div>
                 <div>
                   <Label>Spring Rate (₹/unit)</Label>
-                  <Input value={springType === "Pocketed" ? "₹ 22" : "₹ 18"} disabled />
+                  <Input value={`₹ ${materialRates[springType] || (springType === "Pocketed" ? 22 : 18)}`} disabled />
                 </div>
               </div>
             </div>
@@ -194,11 +275,10 @@ const Configuration = () => {
                 </div>
                 <div>
                   <Label>Foam Rate (₹/kg)</Label>
-                  <Input value={foamType === "HR Foam" ? "₹ 260" : "₹ 220"} disabled />
+                  <Input value={`₹ ${materialRates[foamType] || (foamType === "HR Foam" ? 260 : 220)}`} disabled />
                 </div>
 
                 <hr className="border-border" />
-
                 <h3 className="font-semibold text-primary">Coir Details</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -222,12 +302,11 @@ const Configuration = () => {
                   </div>
                   <div>
                     <Label>Coir Rate (₹/kg)</Label>
-                    <Input value="₹ 180" disabled />
+                    <Input value={`₹ ${materialRates[coirType] || 180}`} disabled />
                   </div>
                 </div>
 
                 <hr className="border-border" />
-
                 <h3 className="font-semibold text-primary">Support Materials</h3>
                 <div>
                   <Label>Fabric Type</Label>
@@ -245,7 +324,7 @@ const Configuration = () => {
                   </div>
                   <div>
                     <Label>Fabric Rate (₹/m)</Label>
-                    <Input value="₹ 160" disabled />
+                    <Input value={`₹ ${materialRates[fabricType] || 160}`} disabled />
                   </div>
                 </div>
                 <div>
@@ -264,7 +343,7 @@ const Configuration = () => {
                   </div>
                   <div>
                     <Label>Glue Rate (₹/L)</Label>
-                    <Input value="₹ 120" disabled />
+                    <Input value={`₹ ${materialRates[glueType] || 120}`} disabled />
                   </div>
                 </div>
               </div>
@@ -275,7 +354,7 @@ const Configuration = () => {
         <div className="mt-8 flex items-center justify-between rounded-xl border border-border bg-card p-6 shadow-sm">
           <div>
             <h3 className="text-lg font-bold text-foreground">Ready to Calculate?</h3>
-            <p className="text-sm text-muted-foreground">Click the button below to calculate the total cost and view the results.</p>
+            <p className="text-sm text-muted-foreground">Click the button to calculate the total cost and view the results.</p>
           </div>
           <Button size="lg" className="bg-success hover:bg-success/90 text-success-foreground" onClick={handleCalculate}>
             Save & Calculate Total
