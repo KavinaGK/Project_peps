@@ -1,40 +1,72 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Pencil, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import PageHeader from "@/components/PageHeader";
-import { defaultMaterials, type Material } from "@/data/materials";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+
+interface Material {
+  id: string;
+  category: string;
+  material: string;
+  unit: string;
+  rate: number;
+  last_updated: string;
+}
 
 const MaterialPrices = () => {
   const navigate = useNavigate();
-  const [materials, setMaterials] = useState<Material[]>(defaultMaterials);
+  const [materials, setMaterials] = useState<Material[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editRate, setEditRate] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchMaterials();
+  }, []);
+
+  const fetchMaterials = async () => {
+    const { data, error } = await supabase.from("materials").select("*").order("category");
+    if (error) {
+      toast.error("Failed to load materials");
+    } else {
+      setMaterials(data || []);
+    }
+    setLoading(false);
+  };
 
   const startEdit = (m: Material) => {
     setEditingId(m.id);
     setEditRate(String(m.rate));
   };
 
-  const saveEdit = (id: string) => {
-    setMaterials((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, rate: Number(editRate), lastUpdated: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) } : m))
-    );
+  const saveEdit = async (id: string) => {
+    const { error } = await supabase
+      .from("materials")
+      .update({ rate: Number(editRate), last_updated: new Date().toISOString() })
+      .eq("id", id);
+    if (error) {
+      toast.error("Failed to update");
+    } else {
+      toast.success("Rate updated");
+      fetchMaterials();
+    }
     setEditingId(null);
-    toast.success("Rate updated");
   };
 
-  const categoryColor: Record<string, string> = {
-    Spring: "text-primary",
-    Steel: "text-primary",
-    Foam: "text-primary",
-    Coir: "text-primary",
-    Fabric: "text-primary",
-    Glue: "text-primary",
-  };
+  const formatDate = (d: string) => new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <PageHeader title="Material Price Settings" />
+        <div className="flex items-center justify-center p-12 text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -61,7 +93,7 @@ const MaterialPrices = () => {
               <TableBody>
                 {materials.map((m) => (
                   <TableRow key={m.id}>
-                    <TableCell className={`font-medium ${categoryColor[m.category] || ""}`}>{m.category}</TableCell>
+                    <TableCell className="font-medium text-primary">{m.category}</TableCell>
                     <TableCell>{m.material}</TableCell>
                     <TableCell>{m.unit}</TableCell>
                     <TableCell>
@@ -77,7 +109,7 @@ const MaterialPrices = () => {
                         m.rate
                       )}
                     </TableCell>
-                    <TableCell>{m.lastUpdated}</TableCell>
+                    <TableCell>{formatDate(m.last_updated)}</TableCell>
                     <TableCell>
                       {editingId === m.id ? (
                         <button onClick={() => saveEdit(m.id)} className="text-success hover:text-success/80">

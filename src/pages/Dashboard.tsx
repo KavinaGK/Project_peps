@@ -1,6 +1,7 @@
 import { Settings, ClipboardList, LayoutGrid } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import PageHeader from "@/components/PageHeader";
+import { useAuth } from "@/contexts/AuthContext";
 
 const cards = [
   {
@@ -37,10 +38,16 @@ const steps = [
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { signOut } = useAuth();
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate("/");
+  };
 
   return (
     <div className="min-h-screen bg-background">
-      <PageHeader title="Mattress Costing System - Dashboard" showLogout />
+      <PageHeader title="Mattress Costing System - Dashboard" showLogout onLogout={handleLogout} />
 
       <main className="mx-auto max-w-6xl p-6">
         <div className="mb-8">
