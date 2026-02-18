@@ -95,9 +95,7 @@ const Configuration = () => {
 
     const totalMaterialCost = costItems.reduce((s, i) => s + i.cost, 0);
     const labourOverhead = 700 + 450;
-    const totalCost = totalMaterialCost;
-    const profit = Math.round(totalCost * 0.2);
-    const sellingPrice = totalCost + profit;
+    const totalCost = totalMaterialCost + labourOverhead;
 
     const { error: resultErr } = await supabase.from("costing_results").insert({
       user_id: user.id,
@@ -106,9 +104,9 @@ const Configuration = () => {
       total_material_cost: totalMaterialCost,
       labour_overhead: labourOverhead,
       total_cost: totalCost,
-      profit_percent: 20,
-      profit,
-      selling_price: sellingPrice,
+      profit_percent: 0,
+      profit: 0,
+      selling_price: totalCost,
     });
 
     if (resultErr) {
