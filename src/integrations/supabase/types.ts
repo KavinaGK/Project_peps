@@ -16,63 +16,165 @@ export type Database = {
     Tables: {
       costing_configs: {
         Row: {
+          border_fabric_mtr: number
+          border_wire_kg: number
+          box_type: string
           category: string
+          channel: string
           coir_type: string
+          comfort_foam: string
+          comfort_foam_kg: number
+          comfort_foam_mm: number
+          corner_spring_kg: number
           costing_type: string
+          cotton_felt_gsm: number
+          cotton_felt_kg: number
           created_at: string
           custom_dimensions: boolean
           fabric_type: string
           foam_density: number
           foam_type: string
           glue_type: string
+          hdpe_kg: number
           id: string
           length_in: number
+          m_spring_kg: number
           mattress_type: string
+          memory_foam_kg: number
+          memory_foam_mm: number
+          model: string
+          pack_type: string
+          panel_fabric_mtr: number
+          pvc_kg: number
+          quilt_foam: string
+          quilt_foam_kg: number
+          quilt_foam_mm: number
+          rebonded_foam_kg: number
+          rebonded_foam_mm: number
+          sides: string
+          sidewall_foam_kg: number
+          sidewall_foam_type: string
           size: string
+          spiral_wire_kg: number
+          spring_count: number
           spring_density: number
+          spring_turns: number
           spring_type: string
+          spring_weight_kg: number
+          spring_wire: string
+          tape_edge_mtr: number
+          thickness_in: number
           type: string
           user_id: string
+          wastage_percent: number
           width_in: number
         }
         Insert: {
+          border_fabric_mtr?: number
+          border_wire_kg?: number
+          box_type?: string
           category?: string
+          channel?: string
           coir_type?: string
+          comfort_foam?: string
+          comfort_foam_kg?: number
+          comfort_foam_mm?: number
+          corner_spring_kg?: number
           costing_type?: string
+          cotton_felt_gsm?: number
+          cotton_felt_kg?: number
           created_at?: string
           custom_dimensions?: boolean
           fabric_type?: string
           foam_density?: number
           foam_type?: string
           glue_type?: string
+          hdpe_kg?: number
           id?: string
           length_in?: number
+          m_spring_kg?: number
           mattress_type?: string
+          memory_foam_kg?: number
+          memory_foam_mm?: number
+          model?: string
+          pack_type?: string
+          panel_fabric_mtr?: number
+          pvc_kg?: number
+          quilt_foam?: string
+          quilt_foam_kg?: number
+          quilt_foam_mm?: number
+          rebonded_foam_kg?: number
+          rebonded_foam_mm?: number
+          sides?: string
+          sidewall_foam_kg?: number
+          sidewall_foam_type?: string
           size?: string
+          spiral_wire_kg?: number
+          spring_count?: number
           spring_density?: number
+          spring_turns?: number
           spring_type?: string
+          spring_weight_kg?: number
+          spring_wire?: string
+          tape_edge_mtr?: number
+          thickness_in?: number
           type?: string
           user_id: string
+          wastage_percent?: number
           width_in?: number
         }
         Update: {
+          border_fabric_mtr?: number
+          border_wire_kg?: number
+          box_type?: string
           category?: string
+          channel?: string
           coir_type?: string
+          comfort_foam?: string
+          comfort_foam_kg?: number
+          comfort_foam_mm?: number
+          corner_spring_kg?: number
           costing_type?: string
+          cotton_felt_gsm?: number
+          cotton_felt_kg?: number
           created_at?: string
           custom_dimensions?: boolean
           fabric_type?: string
           foam_density?: number
           foam_type?: string
           glue_type?: string
+          hdpe_kg?: number
           id?: string
           length_in?: number
+          m_spring_kg?: number
           mattress_type?: string
+          memory_foam_kg?: number
+          memory_foam_mm?: number
+          model?: string
+          pack_type?: string
+          panel_fabric_mtr?: number
+          pvc_kg?: number
+          quilt_foam?: string
+          quilt_foam_kg?: number
+          quilt_foam_mm?: number
+          rebonded_foam_kg?: number
+          rebonded_foam_mm?: number
+          sides?: string
+          sidewall_foam_kg?: number
+          sidewall_foam_type?: string
           size?: string
+          spiral_wire_kg?: number
+          spring_count?: number
           spring_density?: number
+          spring_turns?: number
           spring_type?: string
+          spring_weight_kg?: number
+          spring_wire?: string
+          tape_edge_mtr?: number
+          thickness_in?: number
           type?: string
           user_id?: string
+          wastage_percent?: number
           width_in?: number
         }
         Relationships: []
