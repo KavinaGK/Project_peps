@@ -13,10 +13,12 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 
 interface CostItem {
+  slNo?: number;
   category: string;
   material: string;
   qty: number;
   unit: string;
+  rate?: number;
   cost: number;
 }
 
@@ -172,21 +174,23 @@ const Results = () => {
 
     const rows = [
       ...costItems.map((i) => [
+        i.slNo ?? "",
         i.category,
         i.material,
         i.qty || "—",
         i.unit,
+        i.rate != null ? `₹${i.rate}` : "—",
         `₹ ${i.cost.toLocaleString("en-IN")}`,
       ]),
-      ["Labour", "—", "—", "—", `₹ ${labourCost.toLocaleString("en-IN")}`],
-      ["Overhead", "—", "—", "—", `₹ ${overheadCost.toLocaleString("en-IN")}`],
+      ["", "Labour", "—", "—", "—", "—", `₹ ${labourCost.toLocaleString("en-IN")}`],
+      ["", "Overhead", "—", "—", "—", "—", `₹ ${overheadCost.toLocaleString("en-IN")}`],
     ];
 
     autoTable(doc, {
-      head: [["Category", "Material", "Qty", "Unit", "Cost"]],
+      head: [["#", "Category", "Material", "Qty", "Unit", "Rate", "Amount"]],
       body: rows,
       startY: 32,
-      styles: { fontSize: 10 },
+      styles: { fontSize: 8 },
       headStyles: { fillColor: [41, 128, 185] },
     });
 
@@ -210,18 +214,18 @@ const Results = () => {
 
   const exportExcel = () => {
     const rows = [
-      ["Category", "Material", "Qty", "Unit", "Cost (₹)"],
-      ...costItems.map((i) => [i.category, i.material, i.qty || "—", i.unit, i.cost]),
-      ["Labour", "—", "—", "—", labourCost],
-      ["Overhead", "—", "—", "—", overheadCost],
+      ["#", "Category", "Material", "Qty", "Unit", "Rate (₹)", "Amount (₹)"],
+      ...costItems.map((i) => [i.slNo ?? "", i.category, i.material, i.qty || "—", i.unit, i.rate ?? "—", i.cost]),
+      ["", "Labour", "—", "—", "—", "—", labourCost],
+      ["", "Overhead", "—", "—", "—", "—", overheadCost],
       [],
-      ["Total Material Cost", "", "", "", totalMaterialCost],
-      ["Labour + Overhead", "", "", "", labourOverhead],
-      ["TOTAL COST", "", "", "", totalCost],
+      ["", "Total Material Cost", "", "", "", "", totalMaterialCost],
+      ["", "Labour + Overhead", "", "", "", "", labourOverhead],
+      ["", "TOTAL COST", "", "", "", "", totalCost],
     ];
 
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws["!cols"] = [{ wch: 14 }, { wch: 22 }, { wch: 8 }, { wch: 8 }, { wch: 14 }];
+    ws["!cols"] = [{ wch: 5 }, { wch: 16 }, { wch: 30 }, { wch: 8 }, { wch: 8 }, { wch: 10 }, { wch: 14 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Costing");
     XLSX.writeFile(wb, "mattress-costing.xlsx");
@@ -248,39 +252,45 @@ const Results = () => {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-8">#</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Material</TableHead>
                   <TableHead className="text-right">Qty</TableHead>
                   <TableHead>Unit</TableHead>
-                  <TableHead className="text-right">Cost</TableHead>
+                  <TableHead className="text-right">Rate</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {costItems.map((item, i) => (
                   <TableRow key={i}>
-                    <TableCell>{item.category}</TableCell>
-                    <TableCell>{item.material}</TableCell>
-                    <TableCell className="text-right">{item.qty || "—"}</TableCell>
-                    <TableCell>{item.unit}</TableCell>
-                    <TableCell className="text-right">{item.cost.toLocaleString("en-IN")}</TableCell>
+                    <TableCell className="text-muted-foreground text-xs">{item.slNo ?? i + 1}</TableCell>
+                    <TableCell className="text-xs">{item.category}</TableCell>
+                    <TableCell className="text-xs">{item.material}</TableCell>
+                    <TableCell className="text-right text-xs">{item.qty || "—"}</TableCell>
+                    <TableCell className="text-xs">{item.unit}</TableCell>
+                    <TableCell className="text-right text-xs">{item.rate != null ? `₹${item.rate}` : "—"}</TableCell>
+                    <TableCell className="text-right font-medium">{item.cost.toLocaleString("en-IN")}</TableCell>
                   </TableRow>
                 ))}
                 {/* Editable Labour row */}
                 <TableRow className="bg-muted/30">
+                  <TableCell />
                   <TableCell className="font-medium">Labour</TableCell>
                   <TableCell className="text-muted-foreground text-xs">Click cost to edit</TableCell>
+                  <TableCell /><TableCell />
                   <TableCell />
-                  <TableCell>—</TableCell>
                   <TableCell className="text-right">
                     <EditableCell value={labourCost} onSave={handleLabourSave} />
                   </TableCell>
                 </TableRow>
                 {/* Editable Overhead row */}
                 <TableRow className="bg-muted/30">
+                  <TableCell />
                   <TableCell className="font-medium">Overhead</TableCell>
                   <TableCell className="text-muted-foreground text-xs">Click cost to edit</TableCell>
+                  <TableCell /><TableCell />
                   <TableCell />
-                  <TableCell>—</TableCell>
                   <TableCell className="text-right">
                     <EditableCell value={overheadCost} onSave={handleOverheadSave} />
                   </TableCell>
