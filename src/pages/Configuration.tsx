@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,10 +10,14 @@ import PageHeader from "@/components/PageHeader";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { calculateBOM, type MattressConfig } from "@/lib/mattressFormulas";
-import { ChevronRight } from "lucide-react";
+import {
+  calculateBOM,
+  type MattressConfig,
+  type BOMItem,
+} from "@/lib/mattressFormulas";
+import { ChevronRight, RotateCcw, Save } from "lucide-react";
 
-// ── Workflow step config ───────────────────────────────────────────────────
+// ── Workflow step config ─────────────────────────────────────────────────
 
 const THICKNESS_OPTIONS = [3, 4, 5, 6, 8, 10, 12, 16, 20];
 
@@ -29,7 +33,8 @@ const FOAM_LAYERS: Record<number, string> = {
   20: "25mm 50D Memory Foam + 25mm 25D Helixa + 15mm Rebonded + 6mm Cotton Felt T/B",
 };
 
-// Step indicator component
+// ── UI helper components ─────────────────────────────────────────────────
+
 const StepBadge = ({ step, label, active, done }: { step: number; label: string; active: boolean; done: boolean }) => (
   <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
     active ? "bg-primary text-primary-foreground" :
@@ -43,18 +48,19 @@ const StepBadge = ({ step, label, active, done }: { step: number; label: string;
   </div>
 );
 
-// Section card
-const SectionCard = ({ title, children, badge }: { title: string; children: React.ReactNode; badge?: string }) => (
+const SectionCard = ({ title, children, badge, actions }: { title: string; children: React.ReactNode; badge?: string; actions?: React.ReactNode }) => (
   <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
     <div className="section-header flex items-center justify-between">
       <span>{title}</span>
-      {badge && <Badge variant="secondary" className="text-xs">{badge}</Badge>}
+      <div className="flex items-center gap-2">
+        {badge && <Badge variant="secondary" className="text-xs bg-primary-foreground/20 text-primary-foreground">{badge}</Badge>}
+        {actions}
+      </div>
     </div>
     <div className="p-5 space-y-4">{children}</div>
   </div>
 );
 
-// Field row
 const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div className="space-y-1.5">
     <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</Label>
@@ -62,7 +68,6 @@ const Field = ({ label, children }: { label: string; children: React.ReactNode }
   </div>
 );
 
-// Info row (read-only display)
 const InfoRow = ({ label, value }: { label: string; value: string | number }) => (
   <div className="flex justify-between items-center py-1.5 border-b border-border/40 last:border-0">
     <span className="text-sm text-muted-foreground">{label}</span>
@@ -70,41 +75,82 @@ const InfoRow = ({ label, value }: { label: string; value: string | number }) =>
   </div>
 );
 
+const OptionButton = ({ selected, onClick, children, disabled, badge }: {
+  selected: boolean; onClick: () => void; children: React.ReactNode; disabled?: boolean; badge?: string;
+}) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className={`rounded-lg border-2 py-2.5 text-sm font-semibold transition-all relative ${
+      selected ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"
+    } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+  >
+    {children}
+    {badge && <span className="absolute -top-1 -right-1 text-[9px] bg-warning text-warning-foreground px-1 rounded-full">{badge}</span>}
+  </button>
+);
+
+// ── Editable BOM row ─────────────────────────────────────────────────────
+
+interface EditableBOMItem extends BOMItem {
+  id: string;
+}
+
+const BOMRow = ({ item, onChange }: { item: EditableBOMItem; onChange: (id: string, field: "qty" | "rate", value: number) => void }) => (
+  <div className="grid grid-cols-12 gap-2 items-center py-1.5 border-b border-border/30 last:border-0">
+    <span className="col-span-1 text-xs text-muted-foreground text-center">{item.slNo}</span>
+    <span className="col-span-4 text-xs text-foreground leading-tight">{item.material}</span>
+    <span className="col-span-1 text-xs text-muted-foreground text-center">{item.unit}</span>
+    <div className="col-span-2">
+      <Input
+        type="number"
+        step="0.01"
+        value={item.qty}
+        onChange={(e) => onChange(item.id, "qty", parseFloat(e.target.value) || 0)}
+        className="h-7 text-xs text-center px-1"
+      />
+    </div>
+    <div className="col-span-2">
+      <Input
+        type="number"
+        step="0.01"
+        value={item.rate}
+        onChange={(e) => onChange(item.id, "rate", parseFloat(e.target.value) || 0)}
+        className="h-7 text-xs text-center px-1"
+      />
+    </div>
+    <span className="col-span-2 text-xs font-semibold text-foreground text-right">
+      ₹{(item.qty * item.rate).toFixed(2)}
+    </span>
+  </div>
+);
+
+// ── Main Component ───────────────────────────────────────────────────────
+
 const Configuration = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // ── Step 1: Channel
+  // Workflow selections
   const [channel, setChannel] = useState<"Retail" | "Institution" | "Ecom">("Retail");
-
-  // ── Step 2: Core Type
   const [coreType, setCoreType] = useState<"Spring" | "Foam" | "Coir">("Spring");
   const [springType, setSpringType] = useState<"Bonnell" | "Pocketed">("Pocketed");
-
-  // ── Step 3: Sides
   const [sides, setSides] = useState<"Single Side" | "Double Side">("Double Side");
-
-  // ── Step 4: Box Type
   const [boxType, setBoxType] = useState<"With Box" | "Without Box">("With Box");
-
-  // ── Step 5: Pack Type
   const [packType, setPackType] = useState<"Roll Pack" | "Flat Pack">("Roll Pack");
-
-  // ── Step 6: Model
   const [model, setModel] = useState<"Normal" | "Pillow Top" | "Euro Top" | "Faux Top" | "Soft Top">("Normal");
-
-  // ── Step 7: Thickness
   const [thicknessIn, setThicknessIn] = useState<number>(6);
-
-  // ── Dimensions
   const [customDimensions, setCustomDimensions] = useState(false);
   const [lengthIn, setLengthIn] = useState(75);
   const [widthIn, setWidthIn] = useState(36);
   const [mattressType, setMattressType] = useState("Single");
+  const [wastagePercent, setWastagePercent] = useState(4);
 
-  // ── Material rates from DB ──
+  // Material rates & editable BOM
   const [materialRates, setMaterialRates] = useState<Record<string, number>>({});
   const [loadingRates, setLoadingRates] = useState(true);
+  const [bomItems, setBomItems] = useState<EditableBOMItem[]>([]);
+  const [saving, setSaving] = useState(false);
 
   // Load rates
   useEffect(() => {
@@ -125,7 +171,7 @@ const Configuration = () => {
     if (customDimensions) return;
     const presets: Record<string, [number, number]> = {
       Single: [75, 36],
-      "Twin": [75, 39],
+      Twin: [75, 39],
       Double: [75, 48],
       Queen: [78, 60],
       King: [78, 72],
@@ -136,119 +182,139 @@ const Configuration = () => {
     setWidthIn(w);
   }, [mattressType, customDimensions]);
 
-  // Soft-top → Zipper Mattress note
-  const isZipperMattress = model === "Soft Top";
-
-  // Derived BOM preview (live calculation)
-  const bomPreview = useMemo(() => {
-    if (loadingRates || coreType !== "Spring") return null;
+  // Generate BOM defaults from formulas (can be overridden by user)
+  const generateDefaults = useCallback(() => {
+    if (loadingRates || coreType !== "Spring") {
+      setBomItems([]);
+      return;
+    }
     const config: MattressConfig = {
-      channel,
-      springType,
-      sides,
-      boxType,
-      packType,
-      model,
-      thicknessIn,
-      lengthIn,
-      widthIn,
+      channel, springType, sides, boxType, packType, model, thicknessIn, lengthIn, widthIn,
     };
-    return calculateBOM(config, materialRates);
+    const bom = calculateBOM(config, materialRates);
+    setBomItems(bom.items.map((item, i) => ({
+      ...item,
+      id: `bom-${i}-${item.material.slice(0, 10)}`,
+    })));
   }, [channel, springType, sides, boxType, packType, model, thicknessIn, lengthIn, widthIn, materialRates, loadingRates, coreType]);
 
+  // Auto-generate on config changes
+  useEffect(() => {
+    generateDefaults();
+  }, [generateDefaults]);
+
+  // Handle individual BOM item edit
+  const handleBOMChange = (id: string, field: "qty" | "rate", value: number) => {
+    setBomItems(prev => prev.map(item =>
+      item.id === id ? { ...item, [field]: value, amount: field === "qty" ? value * item.rate : item.qty * value } : item
+    ));
+  };
+
+  // Computed totals
+  const totalRMCost = bomItems.reduce((s, i) => s + i.qty * i.rate, 0);
   const sqFt = Math.round(lengthIn * widthIn / 144 * 100) / 100;
+  const rmCostPerSqFt = sqFt > 0 ? Math.round(totalRMCost / sqFt * 100) / 100 : 0;
+  const wastageAmt = Math.round(rmCostPerSqFt * (wastagePercent / 100) * 100) / 100;
+  const finalRMCostPerSqFt = Math.round((rmCostPerSqFt + wastageAmt) * 100) / 100;
+  const isZipperMattress = model === "Soft Top";
 
   const handleCalculate = async () => {
     if (!user) return;
     if (coreType !== "Spring") {
-      toast.info("Foam and Coir costing coming soon. Currently only Spring mattresses are supported.");
+      toast.info("Foam and Coir costing coming soon.");
       return;
     }
-    if (!bomPreview) {
-      toast.error("BOM calculation failed. Please check your inputs.");
+    if (bomItems.length === 0) {
+      toast.error("No BOM items. Please configure the mattress.");
       return;
     }
 
-    const { data: config, error: configErr } = await supabase
-      .from("costing_configs")
-      .insert({
+    setSaving(true);
+    try {
+      const { data: config, error: configErr } = await supabase
+        .from("costing_configs")
+        .insert({
+          user_id: user.id,
+          mattress_type: mattressType,
+          costing_type: channel,
+          type: model,
+          category: `${springType} - ${coreType} Mattress`,
+          size: `${thicknessIn} inch`,
+          custom_dimensions: customDimensions,
+          length_in: lengthIn,
+          width_in: widthIn,
+          foam_type: "18D PU Foam",
+          foam_density: 18,
+          spring_type: springType,
+          spring_density: 40,
+          coir_type: "Rubberized Coir",
+          fabric_type: "Panel Fabric",
+          glue_type: "Yellow Bond Gum",
+          channel,
+          sides,
+          box_type: boxType,
+          pack_type: packType,
+          model,
+          thickness_in: thicknessIn,
+          spring_wire: springType === "Bonnell" ? "2.2mm Grade II" : "1.8mm Grade II",
+          spring_turns: 5,
+          spring_count: bomItems.find(i => i.category === "Spring Core")?.qty ?? 420,
+          spring_weight_kg: 9.45,
+          wastage_percent: wastagePercent,
+        })
+        .select()
+        .single();
+
+      if (configErr || !config) {
+        toast.error("Failed to save configuration");
+        return;
+      }
+
+      const costItems = bomItems.map(i => ({
+        slNo: i.slNo,
+        category: i.category,
+        material: i.material,
+        unit: i.unit,
+        qty: i.qty,
+        rate: i.rate,
+        cost: Math.round(i.qty * i.rate * 100) / 100,
+      }));
+
+      const { error: resultErr } = await supabase.from("costing_results").insert({
         user_id: user.id,
-        mattress_type: mattressType,
-        costing_type: channel,
-        type: model,
-        category: `${springType} - ${coreType} Mattress`,
-        size: `${thicknessIn} inch`,
-        custom_dimensions: customDimensions,
-        length_in: lengthIn,
-        width_in: widthIn,
-        foam_type: "18D PU Foam",
-        foam_density: 18,
-        spring_type: springType,
-        spring_density: 40,
-        coir_type: "Rubberized Coir",
-        fabric_type: "Panel Fabric",
-        glue_type: "Yellow Bond Gum",
-        channel,
-        sides,
-        box_type: boxType,
-        pack_type: packType,
-        model,
-        thickness_in: thicknessIn,
-        spring_wire: springType === "Bonnell" ? "2.2mm Grade II" : "1.8mm Grade II",
-        spring_turns: 5,
-        spring_count: bomPreview.items.find(i => i.category === "Spring Core")?.qty ?? 420,
-        spring_weight_kg: 9.45,
-        wastage_percent: bomPreview.wastagePercent,
-      })
-      .select()
-      .single();
+        config_id: config.id,
+        cost_items: costItems,
+        total_material_cost: Math.round(totalRMCost * 100) / 100,
+        labour_overhead: 0,
+        total_cost: Math.round(totalRMCost * 100) / 100,
+        profit_percent: 0,
+        profit: 0,
+        selling_price: Math.round(totalRMCost * 100) / 100,
+      });
 
-    if (configErr || !config) {
-      toast.error("Failed to save configuration");
-      return;
+      if (resultErr) {
+        toast.error("Failed to save results");
+        return;
+      }
+
+      navigate("/results");
+    } finally {
+      setSaving(false);
     }
-
-    // Build cost items for the results table
-    const costItems = bomPreview.items.map(i => ({
-      slNo: i.slNo,
-      category: i.category,
-      material: i.material,
-      unit: i.unit,
-      qty: i.qty,
-      rate: i.rate,
-      cost: i.amount,
-    }));
-
-    const totalMaterialCost = bomPreview.totalRMCost;
-    const labourOverhead = 0;
-    const totalCost = totalMaterialCost;
-
-    const { error: resultErr } = await supabase.from("costing_results").insert({
-      user_id: user.id,
-      config_id: config.id,
-      cost_items: costItems,
-      total_material_cost: totalMaterialCost,
-      labour_overhead: labourOverhead,
-      total_cost: totalCost,
-      profit_percent: 0,
-      profit: 0,
-      selling_price: totalCost,
-    });
-
-    if (resultErr) {
-      toast.error("Failed to save results");
-      return;
-    }
-
-    navigate("/results");
   };
+
+  // Group BOM items by category
+  const groupedBOM = bomItems.reduce<Record<string, EditableBOMItem[]>>((acc, item) => {
+    if (!acc[item.category]) acc[item.category] = [];
+    acc[item.category].push(item);
+    return acc;
+  }, {});
 
   return (
     <div className="min-h-screen bg-background">
       <PageHeader title="Mattress Costing — Configuration" />
 
       <main className="mx-auto max-w-7xl p-6 space-y-6">
-
         {/* Workflow breadcrumb */}
         <div className="flex flex-wrap items-center gap-2">
           {["Channel", "Core", "Sides", "Box", "Pack", "Model", "Thickness", "Dimensions"].map((s, i) => (
@@ -260,119 +326,64 @@ const Configuration = () => {
         </div>
 
         <div className="grid gap-6 xl:grid-cols-3">
-
           {/* ── LEFT COLUMN: Steps 1–4 ── */}
           <div className="space-y-4">
-
-            {/* Step 1: Channel */}
             <SectionCard title="Step 1 — Channel" badge={channel}>
               <div className="grid grid-cols-3 gap-2">
                 {(["Retail", "Institution", "Ecom"] as const).map(c => (
-                  <button key={c}
-                    onClick={() => setChannel(c)}
-                    className={`rounded-lg border-2 py-2.5 text-sm font-semibold transition-all ${
-                      channel === c ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"
-                    }`}
-                  >{c}</button>
+                  <OptionButton key={c} selected={channel === c} onClick={() => setChannel(c)}>{c}</OptionButton>
                 ))}
               </div>
             </SectionCard>
 
-            {/* Step 2: Core Type */}
             <SectionCard title="Step 2 — Core Type">
               <div className="grid grid-cols-3 gap-2">
                 {(["Spring", "Foam", "Coir"] as const).map(c => (
-                  <button key={c}
-                    onClick={() => setCoreType(c)}
-                    className={`rounded-lg border-2 py-2.5 text-sm font-semibold transition-all relative ${
-                      coreType === c ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"
-                    }`}
-                  >
+                  <OptionButton key={c} selected={coreType === c} onClick={() => setCoreType(c)} badge={c !== "Spring" ? "Soon" : undefined}>
                     {c}
-                    {c !== "Spring" && <span className="absolute -top-1 -right-1 text-[9px] bg-warning text-warning-foreground px-1 rounded-full">Soon</span>}
-                  </button>
+                  </OptionButton>
                 ))}
               </div>
-
               {coreType === "Spring" && (
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   {(["Bonnell", "Pocketed"] as const).map(t => (
-                    <button key={t}
-                      onClick={() => setSpringType(t)}
-                      className={`rounded-lg border-2 py-2.5 text-sm font-semibold transition-all ${
-                        springType === t ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"
-                      }`}
-                    >
-                      {t}
-                    </button>
+                    <OptionButton key={t} selected={springType === t} onClick={() => setSpringType(t)}>{t}</OptionButton>
                   ))}
                 </div>
               )}
             </SectionCard>
 
-            {/* Step 3: Sides */}
             <SectionCard title="Step 3 — Sides">
               <div className="grid grid-cols-2 gap-2">
                 {(["Single Side", "Double Side"] as const).map(s => (
-                  <button key={s}
-                    onClick={() => setSides(s)}
-                    className={`rounded-lg border-2 py-2.5 text-sm font-semibold transition-all ${
-                      sides === s ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"
-                    }`}
-                  >{s}</button>
+                  <OptionButton key={s} selected={sides === s} onClick={() => setSides(s)}>{s}</OptionButton>
                 ))}
               </div>
             </SectionCard>
 
-            {/* Step 4: Box Type */}
             <SectionCard title="Step 4 — Box Type">
               <div className="grid grid-cols-2 gap-2">
                 {(["With Box", "Without Box"] as const).map(b => (
-                  <button key={b}
-                    onClick={() => setBoxType(b)}
-                    className={`rounded-lg border-2 py-2.5 text-sm font-semibold transition-all ${
-                      boxType === b ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"
-                    }`}
-                  >{b}</button>
+                  <OptionButton key={b} selected={boxType === b} onClick={() => setBoxType(b)}>{b}</OptionButton>
                 ))}
               </div>
-              {boxType === "With Box" && (
-                <p className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-2">
-                  Box construction includes 40D sidewall foam
-                </p>
-              )}
             </SectionCard>
           </div>
 
           {/* ── MIDDLE COLUMN: Steps 5–7 + Dimensions ── */}
           <div className="space-y-4">
-
-            {/* Step 5: Pack Type */}
             <SectionCard title="Step 5 — Pack Type">
               <div className="grid grid-cols-2 gap-2">
                 {(["Roll Pack", "Flat Pack"] as const).map(p => (
-                  <button key={p}
-                    onClick={() => setPackType(p)}
-                    className={`rounded-lg border-2 py-2.5 text-sm font-semibold transition-all ${
-                      packType === p ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"
-                    }`}
-                  >{p}</button>
+                  <OptionButton key={p} selected={packType === p} onClick={() => setPackType(p)}>{p}</OptionButton>
                 ))}
               </div>
             </SectionCard>
 
-            {/* Step 6: Model */}
             <SectionCard title="Step 6 — Model">
               <div className="grid grid-cols-2 gap-2">
                 {(["Normal", "Pillow Top", "Euro Top", "Faux Top", "Soft Top"] as const).map(m => (
-                  <button key={m}
-                    onClick={() => setModel(m)}
-                    className={`rounded-lg border-2 py-2.5 text-sm font-semibold transition-all ${
-                      model === m ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"
-                    }`}
-                  >
-                    {m}
-                  </button>
+                  <OptionButton key={m} selected={model === m} onClick={() => setModel(m)}>{m}</OptionButton>
                 ))}
               </div>
               {isZipperMattress && (
@@ -382,16 +393,10 @@ const Configuration = () => {
               )}
             </SectionCard>
 
-            {/* Step 7: Thickness */}
             <SectionCard title="Step 7 — Thickness">
               <div className="grid grid-cols-5 gap-2">
                 {THICKNESS_OPTIONS.map(t => (
-                  <button key={t}
-                    onClick={() => setThicknessIn(t)}
-                    className={`rounded-lg border-2 py-2 text-sm font-bold transition-all ${
-                      thicknessIn === t ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"
-                    }`}
-                  >{t}"</button>
+                  <OptionButton key={t} selected={thicknessIn === t} onClick={() => setThicknessIn(t)}>{t}"</OptionButton>
                 ))}
               </div>
               <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
@@ -400,7 +405,6 @@ const Configuration = () => {
               </div>
             </SectionCard>
 
-            {/* Dimensions */}
             <SectionCard title="Dimensions">
               <Field label="Mattress Type (preset)">
                 <Select value={mattressType} onValueChange={(v) => { setMattressType(v); setCustomDimensions(false); }}>
@@ -413,78 +417,30 @@ const Configuration = () => {
                   </SelectContent>
                 </Select>
               </Field>
-
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Length (inches)">
-                  <Input
-                    type="number"
-                    value={lengthIn}
-                    onChange={(e) => { setCustomDimensions(true); setLengthIn(Number(e.target.value)); }}
-                  />
+                  <Input type="number" value={lengthIn} onChange={(e) => { setCustomDimensions(true); setLengthIn(Number(e.target.value)); }} />
                 </Field>
                 <Field label="Width (inches)">
-                  <Input
-                    type="number"
-                    value={widthIn}
-                    onChange={(e) => { setCustomDimensions(true); setWidthIn(Number(e.target.value)); }}
-                  />
+                  <Input type="number" value={widthIn} onChange={(e) => { setCustomDimensions(true); setWidthIn(Number(e.target.value)); }} />
                 </Field>
               </div>
-
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Area (Sq.Ft)</span>
-                <span className="font-bold text-primary">{sqFt} sq.ft</span>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Wastage %">
+                  <Input type="number" step="0.5" value={wastagePercent} onChange={(e) => setWastagePercent(Number(e.target.value) || 0)} />
+                </Field>
+                <div className="flex items-end">
+                  <div className="flex justify-between text-sm w-full pb-2">
+                    <span className="text-muted-foreground">Area</span>
+                    <span className="font-bold text-primary">{sqFt} sq.ft</span>
+                  </div>
+                </div>
               </div>
             </SectionCard>
           </div>
 
-          {/* ── RIGHT COLUMN: Live BOM Preview ── */}
+          {/* ── RIGHT COLUMN: Configuration Summary ── */}
           <div className="space-y-4">
-            <SectionCard title="Live BOM Preview" badge={`${bomPreview?.items.length ?? 0} items`}>
-              {loadingRates ? (
-                <p className="text-muted-foreground text-sm text-center py-4">Loading rates...</p>
-              ) : bomPreview ? (
-                <div className="space-y-1 max-h-[460px] overflow-y-auto pr-1">
-                  {/* Group by category */}
-                  {Array.from(new Set(bomPreview.items.map(i => i.category))).map(cat => {
-                    const catItems = bomPreview.items.filter(i => i.category === cat);
-                    return (
-                      <div key={cat}>
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-3 mb-1">{cat}</p>
-                        {catItems.map(item => (
-                          <div key={item.slNo} className="flex justify-between items-start py-1 border-b border-border/30 last:border-0 gap-2">
-                            <span className="text-xs text-foreground leading-tight flex-1">{item.material}</span>
-                            <span className="text-xs font-semibold text-foreground whitespace-nowrap">
-                              ₹{item.amount.toLocaleString("en-IN")}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-muted-foreground text-sm text-center py-4">Select Spring mattress to preview BOM</p>
-              )}
-
-              {bomPreview && (
-                <>
-                  <Separator />
-                  <div className="space-y-1.5 pt-1">
-                    <InfoRow label="Total RM Cost" value={`₹ ${bomPreview.totalRMCost.toLocaleString("en-IN")}`} />
-                    <InfoRow label="Area" value={`${bomPreview.sqFt} sq.ft`} />
-                    <InfoRow label="RM Cost / Sq.Ft" value={`₹ ${bomPreview.rmCostPerSqFt.toLocaleString("en-IN")}`} />
-                    <InfoRow label={`Wastage (${bomPreview.wastagePercent}%)`} value={`₹ ${bomPreview.wastageAmt.toLocaleString("en-IN")}`} />
-                    <div className="flex justify-between items-center pt-1.5 border-t-2 border-primary/30">
-                      <span className="text-sm font-bold text-foreground">Final RM / Sq.Ft</span>
-                      <span className="text-base font-bold text-primary">₹ {bomPreview.finalRMCostPerSqFt.toLocaleString("en-IN")}</span>
-                    </div>
-                  </div>
-                </>
-              )}
-            </SectionCard>
-
-            {/* Config Summary */}
             <SectionCard title="Configuration Summary">
               <div className="space-y-0">
                 <InfoRow label="Channel" value={channel} />
@@ -497,16 +453,85 @@ const Configuration = () => {
                 <InfoRow label="Size" value={`${lengthIn}" × ${widthIn}"`} />
               </div>
             </SectionCard>
+
+            <SectionCard title="Cost Summary">
+              <div className="space-y-1.5">
+                <InfoRow label="Total RM Cost" value={`₹ ${Math.round(totalRMCost).toLocaleString("en-IN")}`} />
+                <InfoRow label="Area" value={`${sqFt} sq.ft`} />
+                <InfoRow label="RM Cost / Sq.Ft" value={`₹ ${rmCostPerSqFt.toLocaleString("en-IN")}`} />
+                <InfoRow label={`Wastage (${wastagePercent}%)`} value={`₹ ${wastageAmt.toLocaleString("en-IN")}`} />
+                <div className="flex justify-between items-center pt-2 border-t-2 border-primary/30">
+                  <span className="text-sm font-bold text-foreground">Final RM / Sq.Ft</span>
+                  <span className="text-lg font-bold text-primary">₹ {finalRMCostPerSqFt.toLocaleString("en-IN")}</span>
+                </div>
+              </div>
+            </SectionCard>
           </div>
         </div>
+
+        {/* ── FULL WIDTH: Editable BOM Table ── */}
+        <SectionCard
+          title="Bill of Materials — Editable"
+          badge={`${bomItems.length} items`}
+          actions={
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs text-primary-foreground hover:bg-primary-foreground/20"
+              onClick={generateDefaults}
+            >
+              <RotateCcw className="h-3 w-3 mr-1" />
+              Reset to Defaults
+            </Button>
+          }
+        >
+          {loadingRates ? (
+            <p className="text-muted-foreground text-sm text-center py-8">Loading material rates...</p>
+          ) : bomItems.length > 0 ? (
+            <div className="space-y-0">
+              {/* Header */}
+              <div className="grid grid-cols-12 gap-2 py-2 border-b-2 border-border">
+                <span className="col-span-1 text-[10px] font-bold uppercase text-muted-foreground text-center">#</span>
+                <span className="col-span-4 text-[10px] font-bold uppercase text-muted-foreground">Material</span>
+                <span className="col-span-1 text-[10px] font-bold uppercase text-muted-foreground text-center">Unit</span>
+                <span className="col-span-2 text-[10px] font-bold uppercase text-muted-foreground text-center">Qty</span>
+                <span className="col-span-2 text-[10px] font-bold uppercase text-muted-foreground text-center">Rate (₹)</span>
+                <span className="col-span-2 text-[10px] font-bold uppercase text-muted-foreground text-right">Amount (₹)</span>
+              </div>
+
+              {/* Grouped rows */}
+              {Object.entries(groupedBOM).map(([category, items]) => (
+                <div key={category}>
+                  <div className="bg-muted/50 px-2 py-1.5 mt-2 rounded-md">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{category}</span>
+                  </div>
+                  {items.map(item => (
+                    <BOMRow key={item.id} item={item} onChange={handleBOMChange} />
+                  ))}
+                </div>
+              ))}
+
+              {/* Totals */}
+              <Separator className="my-3" />
+              <div className="grid grid-cols-12 gap-2 items-center py-2">
+                <span className="col-span-10 text-sm font-bold text-foreground text-right">Total RM Cost</span>
+                <span className="col-span-2 text-sm font-bold text-primary text-right">
+                  ₹ {Math.round(totalRMCost).toLocaleString("en-IN")}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm text-center py-8">Select Spring mattress to generate BOM</p>
+          )}
+        </SectionCard>
 
         {/* ── Calculate Bar ── */}
         <div className="flex items-center justify-between rounded-xl border border-border bg-card p-5 shadow-sm">
           <div>
             <h3 className="text-lg font-bold text-foreground">Ready to Calculate?</h3>
             <p className="text-sm text-muted-foreground">
-              {bomPreview
-                ? `Estimated RM Cost: ₹ ${bomPreview.totalRMCost.toLocaleString("en-IN")} for ${mattressType} (${lengthIn}"×${widthIn}"×${thicknessIn}")`
+              {bomItems.length > 0
+                ? `Total RM: ₹ ${Math.round(totalRMCost).toLocaleString("en-IN")} | Final RM/Sq.Ft: ₹ ${finalRMCostPerSqFt} for ${mattressType} (${lengthIn}"×${widthIn}"×${thicknessIn}")`
                 : "Configure the mattress above to calculate costs"}
             </p>
           </div>
@@ -514,9 +539,10 @@ const Configuration = () => {
             size="lg"
             className="bg-success hover:bg-success/90 text-success-foreground min-w-[200px]"
             onClick={handleCalculate}
-            disabled={!bomPreview}
+            disabled={bomItems.length === 0 || saving}
           >
-            Save & Calculate
+            <Save className="h-4 w-4 mr-2" />
+            {saving ? "Saving..." : "Save & Calculate"}
           </Button>
         </div>
       </main>
