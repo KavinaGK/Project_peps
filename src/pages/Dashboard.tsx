@@ -5,20 +5,12 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const cards = [
   {
-    icon: Settings,
-    iconBg: "bg-primary/10 text-primary",
-    title: "Material Prices",
-    description: "View and update market prices for materials",
-    link: "/materials",
-    linkText: "Start Here →",
-  },
-  {
     icon: ClipboardList,
     iconBg: "bg-success/10 text-success",
-    title: "Configuration",
-    description: "Configure mattress specs and select materials",
+    title: "Configuration & BOM",
+    description: "Configure mattress specs, edit materials, quantities & rates",
     link: "/configuration",
-    linkText: "Configure Now →",
+    linkText: "Start Here →",
   },
   {
     icon: LayoutGrid,
@@ -31,9 +23,8 @@ const cards = [
 ];
 
 const steps = [
-  { num: 1, title: "Material Prices", desc: "Review and update current market prices for materials", color: "bg-primary" },
-  { num: 2, title: "Configuration & Materials", desc: "Select mattress type, size, and materials", color: "bg-success" },
-  { num: 3, title: "View Results", desc: "See detailed cost breakdown and export reports", color: "bg-purple-500" },
+  { num: 1, title: "Configuration & BOM", desc: "Configure mattress type, size, and edit all material quantities, rates & specs", color: "bg-success" },
+  { num: 2, title: "View Results", desc: "See detailed cost breakdown and export reports", color: "bg-purple-500" },
 ];
 
 const Dashboard = () => {

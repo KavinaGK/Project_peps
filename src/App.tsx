@@ -7,7 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-import MaterialPrices from "./pages/MaterialPrices";
+
 import Configuration from "./pages/Configuration";
 import Results from "./pages/Results";
 import NotFound from "./pages/NotFound";
@@ -24,7 +24,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Login />} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/materials" element={<ProtectedRoute><MaterialPrices /></ProtectedRoute>} />
+            
             <Route path="/configuration" element={<ProtectedRoute><Configuration /></ProtectedRoute>} />
             <Route path="/results" element={<ProtectedRoute><Results /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />

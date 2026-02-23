@@ -68,10 +68,17 @@ interface EditableBOMItem extends BOMItem {
   id: string;
 }
 
-const BOMRow = ({ item, onChange }: { item: EditableBOMItem; onChange: (id: string, field: "qty" | "rate", value: number) => void }) => (
+const BOMRow = ({ item, onChange }: { item: EditableBOMItem; onChange: (id: string, field: "qty" | "rate" | "material", value: number | string) => void }) => (
   <div className="grid grid-cols-12 gap-2 items-center py-2 border-b border-border/30 last:border-0">
     <span className="col-span-1 text-xs text-muted-foreground text-center">{item.slNo}</span>
-    <span className="col-span-4 text-xs text-foreground leading-tight">{item.material}</span>
+    <div className="col-span-4">
+      <Input
+        type="text"
+        value={item.material}
+        onChange={(e) => onChange(item.id, "material", e.target.value)}
+        className="h-8 text-xs px-2 border-dashed"
+      />
+    </div>
     <span className="col-span-1 text-xs text-muted-foreground text-center">{item.unit}</span>
     <div className="col-span-2">
       <Input
@@ -179,9 +186,13 @@ const Configuration = () => {
     generateDefaults();
   }, [generateDefaults]);
 
-  const handleBOMChange = (id: string, field: "qty" | "rate", value: number) => {
+  const handleBOMChange = (id: string, field: "qty" | "rate" | "material", value: number | string) => {
     setBomItems(prev => prev.map(item =>
-      item.id === id ? { ...item, [field]: value, amount: field === "qty" ? value * item.rate : item.qty * value } : item
+      item.id === id ? {
+        ...item,
+        [field]: value,
+        amount: field === "qty" ? (value as number) * item.rate : field === "rate" ? item.qty * (value as number) : item.amount,
+      } : item
     ));
   };
 
