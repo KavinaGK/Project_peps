@@ -66,18 +66,42 @@ const InfoRow = ({ label, value }: { label: string; value: string | number }) =>
 
 interface EditableBOMItem extends BOMItem {
   id: string;
+  spec: string; // extracted spec like "4mm", "700 GSM", "42mm"
+  baseName: string; // material name without the spec
 }
 
-const BOMRow = ({ item, onChange }: { item: EditableBOMItem; onChange: (id: string, field: "qty" | "rate" | "material", value: number | string) => void }) => (
+/** Extract the first numeric+unit spec (e.g. "4mm", "700 GSM", "50 Micron") from material name */
+const extractSpec = (name: string): { spec: string; baseName: string } => {
+  // Match patterns like "4mm", "1.4mm", "700 GSM", "50 Micron", "18D", "70D", "42mm"
+  const match = name.match(/(\d+\.?\d*)\s*(mm|gsm|micron|d)\b/i);
+  if (match) {
+    const spec = match[0];
+    const baseName = name.replace(spec, "{{SPEC}}").trim();
+    return { spec, baseName };
+  }
+  return { spec: "", baseName: name };
+};
+
+const rebuildName = (baseName: string, spec: string): string => {
+  if (!baseName.includes("{{SPEC}}")) return baseName;
+  return baseName.replace("{{SPEC}}", spec).replace(/\s+/g, " ").trim();
+};
+
+const BOMRow = ({ item, onChange }: { item: EditableBOMItem; onChange: (id: string, field: "qty" | "rate" | "spec", value: number | string) => void }) => (
   <div className="grid grid-cols-12 gap-2 items-center py-2 border-b border-border/30 last:border-0">
     <span className="col-span-1 text-xs text-muted-foreground text-center">{item.slNo}</span>
-    <div className="col-span-4">
-      <Input
-        type="text"
-        value={item.material}
-        onChange={(e) => onChange(item.id, "material", e.target.value)}
-        className="h-8 text-xs px-2 border-dashed"
-      />
+    <span className="col-span-3 text-xs text-foreground leading-tight">{item.material}</span>
+    <div className="col-span-1">
+      {item.spec ? (
+        <Input
+          type="text"
+          value={item.spec}
+          onChange={(e) => onChange(item.id, "spec", e.target.value)}
+          className="h-7 text-[11px] text-center px-1 border-dashed border-primary/40"
+        />
+      ) : (
+        <span className="text-xs text-muted-foreground text-center block">—</span>
+      )}
     </div>
     <span className="col-span-1 text-xs text-muted-foreground text-center">{item.unit}</span>
     <div className="col-span-2">
@@ -176,24 +200,36 @@ const Configuration = () => {
       thicknessIn, lengthIn, widthIn,
     };
     const bom = calculateBOM(config, materialRates);
-    setBomItems(bom.items.map((item, i) => ({
-      ...item,
-      id: `bom-${i}-${item.material.slice(0, 10)}`,
-    })));
+    setBomItems(bom.items.map((item, i) => {
+      const { spec, baseName } = extractSpec(item.material);
+      return {
+        ...item,
+        id: `bom-${i}-${item.material.slice(0, 10)}`,
+        spec,
+        baseName,
+      };
+    }));
   }, [channel, springType, sides, boxType, packType, model, thicknessIn, lengthIn, widthIn, materialRates, loadingRates, coreType]);
 
   useEffect(() => {
     generateDefaults();
   }, [generateDefaults]);
 
-  const handleBOMChange = (id: string, field: "qty" | "rate" | "material", value: number | string) => {
-    setBomItems(prev => prev.map(item =>
-      item.id === id ? {
+  const handleBOMChange = (id: string, field: "qty" | "rate" | "spec", value: number | string) => {
+    setBomItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      if (field === "spec") {
+        const newSpec = value as string;
+        const newMaterial = rebuildName(item.baseName, newSpec);
+        return { ...item, spec: newSpec, material: newMaterial };
+      }
+      const numVal = value as number;
+      return {
         ...item,
-        [field]: value,
-        amount: field === "qty" ? (value as number) * item.rate : field === "rate" ? item.qty * (value as number) : item.amount,
-      } : item
-    ));
+        [field]: numVal,
+        amount: field === "qty" ? numVal * item.rate : item.qty * numVal,
+      };
+    }));
   };
 
   // Computed
@@ -502,7 +538,8 @@ const Configuration = () => {
                   {/* Table header */}
                   <div className="grid grid-cols-12 gap-2 py-2 border-b-2 border-border sticky top-0 bg-card z-10">
                     <span className="col-span-1 text-[10px] font-bold uppercase text-muted-foreground text-center">#</span>
-                    <span className="col-span-4 text-[10px] font-bold uppercase text-muted-foreground">Material</span>
+                    <span className="col-span-3 text-[10px] font-bold uppercase text-muted-foreground">Material</span>
+                    <span className="col-span-1 text-[10px] font-bold uppercase text-muted-foreground text-center">Spec</span>
                     <span className="col-span-1 text-[10px] font-bold uppercase text-muted-foreground text-center">Unit</span>
                     <span className="col-span-2 text-[10px] font-bold uppercase text-muted-foreground text-center">Qty</span>
                     <span className="col-span-2 text-[10px] font-bold uppercase text-muted-foreground text-center">Rate (₹)</span>
