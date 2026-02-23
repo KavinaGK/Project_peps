@@ -14,14 +14,6 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-/* 🔹 Smart Redirect Component */
-const RootRedirect = () => {
-  const { user, loading } = useAuth();
-
-  if (loading) return null;
-
-  return user ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />;
-};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -32,7 +24,7 @@ const App = () => (
         <AuthProvider>
           <Routes>
             {/* Smart root handling */}
-            <Route path="/" element={<RootRedirect />} />
+            <Route path="/" element={<Login />} />
 
             <Route path="/login" element={<Login />} />
 
