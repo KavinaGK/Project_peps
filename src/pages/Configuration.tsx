@@ -67,19 +67,24 @@ const InfoRow = ({ label, value }: { label: string; value: string | number }) =>
 interface EditableBOMItem extends BOMItem {
   id: string;
   spec: string; // extracted spec like "4mm", "700 GSM", "42mm"
+  specNum: number; // numeric part of spec for recalc
+  specUnit: string; // unit part of spec (mm, GSM, D, etc.)
   baseName: string; // material name without the spec
+  origQty: number; // original qty at original spec for proportional recalc
+  origSpecNum: number; // original spec number
 }
 
 /** Extract the first numeric+unit spec (e.g. "4mm", "700 GSM", "50 Micron") from material name */
-const extractSpec = (name: string): { spec: string; baseName: string } => {
-  // Match patterns like "4mm", "1.4mm", "700 GSM", "50 Micron", "18D", "70D", "42mm"
+const extractSpec = (name: string): { spec: string; specNum: number; specUnit: string; baseName: string } => {
   const match = name.match(/(\d+\.?\d*)\s*(mm|gsm|micron|d)\b/i);
   if (match) {
     const spec = match[0];
+    const specNum = parseFloat(match[1]);
+    const specUnit = match[2];
     const baseName = name.replace(spec, "{{SPEC}}").trim();
-    return { spec, baseName };
+    return { spec, specNum, specUnit, baseName };
   }
-  return { spec: "", baseName: name };
+  return { spec: "", specNum: 0, specUnit: "", baseName: name };
 };
 
 const rebuildName = (baseName: string, spec: string): string => {
@@ -103,7 +108,6 @@ const BOMRow = ({ item, onChange }: { item: EditableBOMItem; onChange: (id: stri
         <span className="text-xs text-muted-foreground text-center block">—</span>
       )}
     </div>
-    <span className="col-span-1 text-xs text-muted-foreground text-center">{item.unit}</span>
     <div className="col-span-2">
       <Input
         type="number"
@@ -113,6 +117,7 @@ const BOMRow = ({ item, onChange }: { item: EditableBOMItem; onChange: (id: stri
         className="h-8 text-xs text-center px-1"
       />
     </div>
+    <span className="col-span-1 text-xs text-muted-foreground text-center">{item.unit}</span>
     <div className="col-span-2">
       <Input
         type="number"
@@ -201,12 +206,13 @@ const Configuration = () => {
     };
     const bom = calculateBOM(config, materialRates);
     setBomItems(bom.items.map((item, i) => {
-      const { spec, baseName } = extractSpec(item.material);
+      const { spec, specNum, specUnit, baseName } = extractSpec(item.material);
       return {
         ...item,
         id: `bom-${i}-${item.material.slice(0, 10)}`,
-        spec,
-        baseName,
+        spec, specNum, specUnit, baseName,
+        origQty: item.qty,
+        origSpecNum: specNum,
       };
     }));
   }, [channel, springType, sides, boxType, packType, model, thicknessIn, lengthIn, widthIn, materialRates, loadingRates, coreType]);
@@ -220,8 +226,14 @@ const Configuration = () => {
       if (item.id !== id) return item;
       if (field === "spec") {
         const newSpec = value as string;
+        const newSpecNum = parseFloat(newSpec) || 0;
         const newMaterial = rebuildName(item.baseName, newSpec);
-        return { ...item, spec: newSpec, material: newMaterial };
+        // Recalculate qty proportionally: if spec doubles, qty doubles (for thickness/density-based items)
+        let newQty = item.qty;
+        if (item.origSpecNum > 0 && newSpecNum > 0) {
+          newQty = Math.round((item.origQty * newSpecNum / item.origSpecNum) * 100) / 100;
+        }
+        return { ...item, spec: newSpec, specNum: newSpecNum, material: newMaterial, qty: newQty, amount: Math.round(newQty * item.rate * 100) / 100 };
       }
       const numVal = value as number;
       return {
@@ -540,8 +552,8 @@ const Configuration = () => {
                     <span className="col-span-1 text-[10px] font-bold uppercase text-muted-foreground text-center">#</span>
                     <span className="col-span-3 text-[10px] font-bold uppercase text-muted-foreground">Material</span>
                     <span className="col-span-1 text-[10px] font-bold uppercase text-muted-foreground text-center">Spec</span>
-                    <span className="col-span-1 text-[10px] font-bold uppercase text-muted-foreground text-center">Unit</span>
                     <span className="col-span-2 text-[10px] font-bold uppercase text-muted-foreground text-center">Qty</span>
+                    <span className="col-span-1 text-[10px] font-bold uppercase text-muted-foreground text-center">Unit</span>
                     <span className="col-span-2 text-[10px] font-bold uppercase text-muted-foreground text-center">Rate (₹)</span>
                     <span className="col-span-2 text-[10px] font-bold uppercase text-muted-foreground text-right">Amount (₹)</span>
                   </div>
